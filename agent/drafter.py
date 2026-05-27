@@ -1,6 +1,7 @@
-"""LLM Drafter — Phase 4.
+"""LLM Drafter — Phase 4 (updated Phase 6).
 
-Turns a ContextWindow into a candidate reply using Claude Sonnet 4.6.
+Turns a ContextWindow into a candidate reply using Claude Sonnet 4.6
+(or a caller-specified model/temperature for bootstrap experiments).
 
 Output schema (parsed from model response):
   {
@@ -185,11 +186,23 @@ def _valid(parsed: dict | None) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def draft_reply(ctx: ContextWindow) -> Draft:
+def draft_reply(
+    ctx: ContextWindow,
+    *,
+    model: str = MODEL_SONNET,
+    temperature: float = 0.3,
+    feature: str = "drafter",
+) -> Draft:
     """Generate a candidate reply for the thread described by `ctx`.
 
+    Keyword-only overrides (useful for bootstrap label generation):
+      model       — which Anthropic model to call (default: Sonnet)
+      temperature — sampling temperature for attempt 1 (default: 0.3).
+                    Attempt 2 (JSON-parse retry) always uses 0.0.
+      feature     — cost-log feature tag (default: "drafter")
+
     Two LLM attempts:
-      • Attempt 1 — temperature=0.3, normal instruction.
+      • Attempt 1 — caller temperature, normal instruction.
       • Attempt 2 — temperature=0.0, strict retry suffix (if attempt 1 fails
         to produce valid JSON).
     After both attempts fail, returns a "blocked" escalation draft.
@@ -207,17 +220,19 @@ def draft_reply(ctx: ContextWindow) -> Draft:
     parsed: dict | None = None
 
     for attempt in (1, 2):
-        temperature = 0.3 if attempt == 1 else 0.0
+        # Attempt 1 uses the caller-specified temperature; retry always uses 0.0
+        # so we get a deterministic fallback regardless of how hot attempt 1 was.
+        temp_for_attempt = temperature if attempt == 1 else 0.0
         sys_for_attempt = system if attempt == 1 else system + _JSON_STRICT_RETRY
 
         try:
             result: LLMCallResult = call_llm(
-                feature="drafter",
-                model=MODEL_SONNET,
+                feature=feature,
+                model=model,
                 system=sys_for_attempt,
                 messages=messages,
                 max_tokens=1024,
-                temperature=temperature,
+                temperature=temp_for_attempt,
             )
         except Exception as exc:
             logger.warning("drafter attempt %d errored: %s", attempt, exc)
@@ -268,7 +283,7 @@ def draft_reply(ctx: ContextWindow) -> Draft:
                 confidence_label="blocked",
                 auto_sendable=False,
                 guardrail_triggered=True,
-                model=MODEL_SONNET,
+                model=model,
                 input_tokens=total_in,
                 output_tokens=total_out,
                 cost_usd=total_cost,
@@ -322,7 +337,7 @@ def draft_reply(ctx: ContextWindow) -> Draft:
             confidence_label=confidence_label,
             auto_sendable=auto_sendable,
             guardrail_triggered=guardrail_triggered,
-            model=MODEL_SONNET,
+            model=model,
             input_tokens=total_in,
             output_tokens=total_out,
             cost_usd=total_cost,
