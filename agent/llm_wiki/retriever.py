@@ -67,9 +67,29 @@ class WikiRetriever:
         )
         return len(chunks)
 
-    def query(self, q: str, k: int = 3) -> list[WikiHit]:
+    # Intents for which a company-wide chunk is almost always relevant and
+    # would otherwise be drowned by 20 lexically-similar product chunks.
+    # (Diagnosed in Phase 1 verification; see PLAN.md Phase 3.)
+    _COMPANY_BIAS_INTENTS: set[str] = {
+        "pricing",
+        "discount",
+        "cancellation",
+        "billing",
+    }
+
+    def _query_raw(
+        self,
+        q: str,
+        n: int,
+        where: dict[str, Any] | None = None,
+    ) -> list[WikiHit]:
+        if n <= 0:
+            return []
         coll = self._collection()
-        res = coll.query(query_texts=[q], n_results=k)
+        kwargs: dict[str, Any] = {"query_texts": [q], "n_results": n}
+        if where is not None:
+            kwargs["where"] = where
+        res = coll.query(**kwargs)
         ids = res["ids"][0] if res.get("ids") else []
         docs = res["documents"][0] if res.get("documents") else []
         metas = res["metadatas"][0] if res.get("metadatas") else []
@@ -92,3 +112,61 @@ class WikiRetriever:
                 )
             )
         return hits
+
+    def query(self, q: str, k: int = 3) -> list[WikiHit]:
+        """Unfiltered vector query. Use for diagnostics / generic lookups."""
+        return self._query_raw(q, n=k)
+
+    def query_intent_aware(
+        self,
+        q: str,
+        intent: str,
+        product_id: str | None = None,
+        k: int = 5,
+        k_company: int = 2,
+        k_product: int = 2,
+    ) -> list[WikiHit]:
+        """Intent-aware + product-aware retrieval.
+
+        Reserves slots so neither company-wide chunks nor the thread's own
+        product can get smothered by lexically similar competitors:
+
+        - For company-policy intents (pricing / discount / cancellation /
+          billing), reserve up to `k_company` slots for company-wide chunks
+          (Phase 1 verification finding).
+        - When a thread's `product_id` is known, reserve up to `k_product`
+          slots for that product's chunks (Phase 3 verification finding —
+          a follow-up message that drops the product name made BillSplit's
+          own pricing miss the top-5 for a BillSplit thread).
+
+        Remaining slots fill from open vector search. All hits are de-duped
+        by chunk_id and finally re-sorted by distance so the strongest
+        actual matches still rank first.
+        """
+        bias_company = intent in self._COMPANY_BIAS_INTENTS
+        slots_reserved = (k_company if bias_company else 0) + (
+            k_product if product_id else 0
+        )
+        k_open = max(0, k - slots_reserved)
+
+        all_hits: list[WikiHit] = []
+        if bias_company:
+            all_hits += self._query_raw(
+                q, n=k_company, where={"product_id": "_company"}
+            )
+        if product_id:
+            all_hits += self._query_raw(
+                q, n=k_product, where={"product_id": product_id}
+            )
+        if k_open > 0:
+            all_hits += self._query_raw(q, n=k_open)
+
+        seen: set[str] = set()
+        merged: list[WikiHit] = []
+        for h in all_hits:
+            if h.chunk_id in seen:
+                continue
+            seen.add(h.chunk_id)
+            merged.append(h)
+        merged.sort(key=lambda h: h.distance if h.distance is not None else float("inf"))
+        return merged[:k]
