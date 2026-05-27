@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LumenX — Knowledge Graph</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  :root {
+    --bg: #06090f;
+    --surface: rgba(14,22,40,0.85);
+    --border: rgba(99,120,200,0.18);
+    --text: #c8d6ef;
+    --text-dim: #5a7099;
+    --accent: #4f8ef7;
+    --gold: #f5b400;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', 'Segoe UI', sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+
+  /* ── Header ── */
+  header {
+    display: flex; align-items: center; gap: 16px;
+    padding: 12px 20px; flex-shrink: 0; z-index: 30;
+    background: rgba(6,9,15,0.75); backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+  }
+  .logo { font-size: 19px; font-weight: 700; letter-spacing: -0.5px; color: #fff; }
+  .logo span { color: var(--gold); }
+  .subtitle { font-size: 12px; color: var(--text-dim); font-weight: 400; margin-top: 1px; }
+  header .spacer { flex: 1; }
+
+  /* ── Mode Buttons ── */
+  .mode-bar { display: flex; gap: 6px; }
+  .mode-btn {
+    padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border);
+    background: transparent; color: var(--text-dim); font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: all .18s;
+  }
+  .mode-btn:hover { border-color: var(--accent); color: #fff; }
+  .mode-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  /* ── Search ── */
+  .search-wrap { position: relative; }
+  .search-wrap input {
+    background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+    border-radius: 20px; padding: 6px 14px 6px 32px;
+    color: var(--text); font-size: 12px; width: 180px; outline: none;
+    transition: border-color .18s;
+  }
+  .search-wrap input:focus { border-color: var(--accent); }
+  .search-wrap::before {
+    content: '⌕'; position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+    color: var(--text-dim); font-size: 14px; pointer-events: none;
+  }
+
+  /* ── Main area ── */
+  .canvas-wrap { flex: 1; position: relative; overflow: hidden; }
+  svg { width: 100%; height: 100%; cursor: grab; }
+  svg:active { cursor: grabbing; }
+
+  /* ── Nodes ── */
+  .node-company circle { filter: drop-shadow(0 0 18px rgba(245,180,0,0.6)); }
+  .node-product circle { transition: filter .2s; }
+  .node-product:hover circle { filter: drop-shadow(0 0 14px rgba(79,142,247,0.7)); cursor: pointer; }
+  .node-product.selected circle { filter: drop-shadow(0 0 18px rgba(79,142,247,0.9)); }
+  .node-section circle { opacity: 0.75; }
+  .node-hub circle { opacity: 0.9; }
+
+  .node-label {
+    font-size: 10px; font-weight: 600; text-anchor: middle;
+    fill: rgba(200,214,239,0.9); pointer-events: none;
+    text-shadow: 0 1px 3px #000;
+  }
+  .node-label.large { font-size: 11px; font-weight: 700; fill: #fff; }
+
+  /* ── Edges ── */
+  .link-company { stroke: rgba(80,100,160,0.25); stroke-dasharray: 3,4; }
+  .link-intra { stroke-width: 2.5; stroke-linecap: round; }
+  .link-section { stroke: rgba(80,100,160,0.2); }
+  .link-hub { stroke-dasharray: 4,4; }
+
+  /* ── Tooltip ── */
+  #tooltip {
+    position: absolute; pointer-events: none; z-index: 50;
+    background: var(--surface); border: 1px solid var(--border);
+    backdrop-filter: blur(20px); border-radius: 10px;
+    padding: 10px 14px; max-width: 220px;
+    font-size: 12px; line-height: 1.5; opacity: 0;
+    transition: opacity .12s; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  #tooltip.show { opacity: 1; }
+  .tt-title { font-weight: 700; font-size: 13px; color: #fff; margin-bottom: 3px; }
+  .tt-cat { font-size: 10px; color: var(--text-dim); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .5px; }
+  .tt-line { color: var(--text-dim); }
+  .tt-line strong { color: var(--text); }
+
+  /* ── Info Panel ── */
+  #info-panel {
+    position: absolute; right: 0; top: 0; bottom: 0; width: 320px;
+    background: var(--surface); border-left: 1px solid var(--border);
+    backdrop-filter: blur(24px); overflow-y: auto;
+    transform: translateX(100%); transition: transform .25s cubic-bezier(.4,0,.2,1);
+    z-index: 20; padding: 20px;
+  }
+  #info-panel.open { transform: translateX(0); }
+  #info-panel::-webkit-scrollbar { width: 4px; }
+  #info-panel::-webkit-scrollbar-track { background: transparent; }
+  #info-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .panel-close {
+    position: absolute; top: 14px; right: 14px;
+    background: rgba(255,255,255,0.07); border: 1px solid var(--border);
+    border-radius: 50%; width: 26px; height: 26px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; color: var(--text-dim); line-height: 1;
+  }
+  .panel-close:hover { color: #fff; }
+  .panel-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 10px; font-weight: 600; letter-spacing: .5px;
+    text-transform: uppercase; margin-bottom: 10px;
+  }
+  .panel-name { font-size: 22px; font-weight: 800; color: #fff; line-height: 1.2; margin-bottom: 4px; }
+  .panel-tagline { font-size: 12px; color: var(--text-dim); margin-bottom: 14px; font-style: italic; }
+  .panel-desc { font-size: 12px; color: var(--text); line-height: 1.6; margin-bottom: 16px; }
+
+  .panel-section { margin-bottom: 16px; }
+  .panel-section h4 {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .8px; color: var(--text-dim); margin-bottom: 8px;
+    padding-bottom: 4px; border-bottom: 1px solid var(--border);
+  }
+  .pricing-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .pricing-tier {
+    background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 6px; text-align: center;
+  }
+  .pricing-tier .tier-name { font-size: 9px; text-transform: uppercase; color: var(--text-dim); }
+  .pricing-tier .tier-price { font-size: 16px; font-weight: 800; color: #fff; margin: 3px 0; }
+  .pricing-tier .tier-note { font-size: 9px; color: var(--text-dim); }
+
+  .feat-pill {
+    display: inline-block; background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 3px 9px; font-size: 10px; margin: 2px 2px 2px 0;
+    color: var(--text);
+  }
+  .int-pill {
+    display: inline-block; border-radius: 12px;
+    padding: 3px 9px; font-size: 10px; margin: 2px 2px 2px 0;
+    font-weight: 600;
+  }
+  .int-pill.lumenx { background: rgba(79,142,247,0.2); border: 1px solid rgba(79,142,247,0.4); color: #7eb6ff; }
+  .int-pill.external { background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text); }
+
+  .wiki-section {
+    background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+    border-radius: 8px; margin-bottom: 6px; overflow: hidden;
+  }
+  .wiki-section-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; cursor: pointer; user-select: none;
+  }
+  .wiki-section-header:hover { background: rgba(255,255,255,0.04); }
+  .wiki-chunk-id { font-family: monospace; font-size: 10px; color: var(--text-dim); flex: 1; }
+  .wiki-section-arrow { font-size: 10px; color: var(--text-dim); transition: transform .15s; }
+  .wiki-section.open .wiki-section-arrow { transform: rotate(90deg); }
+  .wiki-section-body { padding: 0 10px 8px; font-size: 11px; line-height: 1.6; color: var(--text); display: none; }
+  .wiki-section.open .wiki-section-body { display: block; }
+
+  /* ── Legend ── */
+  #legend {
+    position: absolute; bottom: 16px; left: 16px;
+    background: var(--surface); border: 1px solid var(--border);
+    backdrop-filter: blur(20px); border-radius: 10px;
+    padding: 12px 16px; z-index: 20;
+    font-size: 11px;
+  }
+  #legend h5 { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; color: var(--text-dim); margin-bottom: 8px; }
+  .legend-row { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; cursor: pointer; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .legend-row.dimmed { opacity: 0.35; }
+  .legend-label { color: var(--text); }
+
+  /* ── Stats ── */
+  #stats {
+    position: absolute; top: 12px; right: 16px;
+    background: var(--surface); border: 1px solid var(--border);
+    backdrop-filter: blur(20px); border-radius: 8px;
+    padding: 8px 14px; z-index: 20; font-size: 11px;
+    display: flex; gap: 16px;
+  }
+  .stat-item { text-align: center; }
+  .stat-value { font-size: 18px; font-weight: 800; color: #fff; line-height: 1; }
+  .stat-label { color: var(--text-dim); font-size: 10px; }
+
+  /* ── Particles ── */
+  .particle { pointer-events: none; }
+
+  /* ── pulse animation for company node ── */
+  @keyframes pulse-ring {
+    0% { r: 38px; opacity: 0.4; }
+    100% { r: 56px; opacity: 0; }
+  }
+  .pulse-ring { animation: pulse-ring 2s ease-out infinite; }
+
+  /* ── help hint ── */
+  #hint {
+    position: absolute; bottom: 16px; right: 16px;
+    background: var(--surface); border: 1px solid var(--border);
+    backdrop-filter: blur(20px); border-radius: 8px;
+    padding: 8px 12px; font-size: 10px; color: var(--text-dim); z-index: 20;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">Lumen<span>X</span> <span style="color:var(--text-dim);font-weight:400;font-size:14px">Knowledge Graph</span></div>
+    <div class="subtitle">20 products · 167 wiki chunks · interactive</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="mode-bar">
+    <button class="mode-btn active" data-mode="products">Products</button>
+    <button class="mode-btn" data-mode="integrations">Integrations</button>
+    <button class="mode-btn" data-mode="sections">Wiki Sections</button>
+  </div>
+  <div class="search-wrap">
+    <input type="text" id="search" placeholder="Search products…" autocomplete="off">
+  </div>
+</header>
+
+<div class="canvas-wrap">
+  <svg id="graph"></svg>
+
+  <div id="tooltip"></div>
+  <div id="info-panel">
+    <button class="panel-close" id="panel-close">✕</button>
+    <div id="panel-content"></div>
+  </div>
+  <div id="legend">
+    <h5>Categories</h5>
+    <div id="legend-items"></div>
+  </div>
+  <div id="stats">
+    <div class="stat-item"><div class="stat-value" id="stat-nodes">21</div><div class="stat-label">Nodes</div></div>
+    <div class="stat-item"><div class="stat-value" id="stat-edges">24</div><div class="stat-label">Edges</div></div>
+    <div class="stat-item"><div class="stat-value" id="stat-products">20</div><div class="stat-label">Products</div></div>
+  </div>
+  <div id="hint">scroll to zoom · drag to pan · click node for details</div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════════════════════
+
+const CATEGORY_GROUPS = {
+  "Communication": { color: "#818cf8", ids: ["emailpilot","inboxclean","chatrelay"] },
+  "Finance":       { color: "#34d399", ids: ["invoiceflow","billsplit","receiptvault"] },
+  "Productivity":  { color: "#fbbf24", ids: ["taskgrid","kanbanlite","timemark"] },
+  "Docs & Forms":  { color: "#f472b6", ids: ["formcraft","documerge","signpath"] },
+  "Scheduling":    { color: "#a78bfa", ids: ["calendarsync","meetminutes"] },
+  "Knowledge":     { color: "#22d3ee", ids: ["notehub","linkvault"] },
+  "Research":      { color: "#fb923c", ids: ["pollwise","teampulse"] },
+  "Design":        { color: "#2dd4bf", ids: ["pixeldeck"] },
+  "Compliance":    { color: "#f87171", ids: ["audittrail"] },
+};
+
+// Build id→group map
+const PROD_COLOR = {};
+for (const [grp, v] of Object.entries(CATEGORY_GROUPS)) {
+  for (const id of v.ids) PROD_COLOR[id] = { group: grp, color: v.color };
+}
+
+const PRODUCTS = [
+  { id:"emailpilot",   name:"EmailPilot",   tagline:"AI drafting for your inbox.",              features:["Tone-matched drafts","Attachment context","Thread summary","Snooze reminders","Gmail & Outlook"],      pricing:{starter:9,pro:19,team:14}, integrations:["Gmail","Outlook","Google Drive","Notion"],                             audience:"Founders, consultants, customer-facing roles", sla:24,  refund:"14 days", cancel:"Anytime" },
+  { id:"invoiceflow",  name:"InvoiceFlow",  tagline:"Invoices that get paid faster.",           features:["Branded templates","Multi-currency","Late reminders","Stripe/Razorpay","GST/VAT compliant"],             pricing:{starter:7,pro:15,team:39}, integrations:["Stripe","Razorpay","QuickBooks","Zoho Books"],                         audience:"Freelancers, agencies, service businesses",    sla:24,  refund:"14 days (pro-rated)", cancel:"Anytime, CSV export 30d" },
+  { id:"taskgrid",     name:"TaskGrid",     tagline:"Spreadsheet-fast task tracking.",          features:["Spreadsheet-style grid","Custom fields & tags","Saved views","CSV import/export","Slack digests"],        pricing:{starter:0,pro:9,team:7},   integrations:["Slack","Google Calendar","GitHub","Linear"],                          audience:"Ops teams, founders, operations leads",        sla:48,  refund:"14 days", cancel:"Free plan stays forever" },
+  { id:"formcraft",    name:"FormCraft",    tagline:"Forms that don't feel like forms.",         features:["Conversational layouts","Logic jumps","Partial capture","File uploads 50MB","Webhook output"],            pricing:{starter:0,pro:19,team:49}, integrations:["Zapier","Webhooks","Google Sheets","HubSpot"],                        audience:"Marketers, researchers, customer success",     sla:24,  refund:"14 days", cancel:"Free plan stays active" },
+  { id:"calendarsync", name:"CalendarSync", tagline:"Booking links that respect your day.",     features:["Booking pages","Round-robin slots","Meeting caps","Zoom/Meet/Teams links","2-way Google/MS sync"],        pricing:{starter:0,pro:12,team:10}, integrations:["Google Calendar","Microsoft 365","Zoom","Google Meet","Microsoft Teams"], audience:"Sales, recruiting, meeting-heavy roles",       sla:24,  refund:"14 days", cancel:"Anytime" },
+  { id:"notehub",      name:"NoteHub",      tagline:"Notes you can actually find later.",        features:["Markdown + live preview","Backlinks & graph","Local-first search","Daily journal","E2E encrypted sync"],  pricing:{starter:0,pro:6,team:9},   integrations:["Obsidian export","Apple Notes import","Markdown export"],             audience:"Researchers, writers, engineering teams",      sla:48,  refund:"14 days", cancel:"Notes stay offline forever" },
+  { id:"chatrelay",    name:"ChatRelay",    tagline:"Customer chat without a war room.",         features:["Embeddable widget","Multi-channel inbox","Topic routing","Business-hours auto-reply","Saved replies"],    pricing:{starter:0,pro:25,team:69}, integrations:["Slack","WhatsApp Business","Email","Zapier"],                         audience:"Support teams, e-commerce, SaaS startups",    sla:12,  refund:"14 days", cancel:"JSON export" },
+  { id:"signpath",     name:"SignPath",     tagline:"E-signatures without the per-doc tax.",     features:["Drag-to-place fields","Sequential/parallel signers","Audit trail","Bulk send 200x","Contract templates"], pricing:{starter:12,pro:29,team:79}, integrations:["Google Drive","Dropbox","Salesforce","HubSpot"],                      audience:"Sales ops, HR, legal in small companies",      sla:24,  refund:"14 days", cancel:"PDFs downloadable forever" },
+  { id:"pollwise",     name:"PollWise",     tagline:"Run a poll in under a minute.",             features:["Single/multi-question","QR code distribution","Live dashboards","Cross-tabs & filters","Anonymous mode"], pricing:{starter:0,pro:12,team:29}, integrations:["Slack","Google Sheets","Microsoft Teams"],                            audience:"Product, marketing, research teams",           sla:48,  refund:"14 days", cancel:"Anytime" },
+  { id:"receiptvault", name:"ReceiptVault", tagline:"Snap, store, and reclaim every receipt.",   features:["Mobile capture","Email ingestion","OCR extraction","Per-project tagging","QuickBooks/Zoho sync"],         pricing:{starter:5,pro:12,team:29}, integrations:["QuickBooks","Zoho Books","Tally","Google Drive"],                     audience:"Founders, traveling pros, finance ops",        sla:24,  refund:"14 days", cancel:"CSV/PDF export" },
+  { id:"timemark",     name:"TimeMark",     tagline:"Time tracking that doesn't nag.",           features:["Auto-detect active project","Manual entries","Per-project rates","Weekly digests","InvoiceFlow handoff"],  pricing:{starter:0,pro:8,team:6},   integrations:["InvoiceFlow","TaskGrid","Toggl import","CSV export"],                 audience:"Freelancers and small agencies",               sla:48,  refund:"14 days", cancel:"Anytime" },
+  { id:"documerge",    name:"DocuMerge",    tagline:"PDFs you don't have to fight.",             features:["Merge/split/rotate","Compress no-loss","Local browser processing","Cloud history","Batch rename"],        pricing:{starter:0,pro:7,team:19},  integrations:["Google Drive","Dropbox","OneDrive"],                                  audience:"Anyone working with PDFs weekly",              sla:48,  refund:"14 days", cancel:"Anytime" },
+  { id:"kanbanlite",   name:"KanbanLite",   tagline:"A kanban board, nothing more.",             features:["Unlimited boards (paid)","Keyboard-driven cards","Single label design","Public read-only links","JSON I/O"], pricing:{starter:0,pro:6,team:5},  integrations:["TaskGrid","GitHub Issues","CSV"],                                    audience:"Engineering and design teams",                 sla:48,  refund:"14 days", cancel:"Anytime" },
+  { id:"meetminutes",  name:"MeetMinutes",  tagline:"Meeting notes that capture decisions.",     features:["Auto-join via calendar","Decision extraction","Speaker transcripts","Searchable archive","Privacy mode"],  pricing:{starter:0,pro:18,team:14}, integrations:["Zoom","Google Meet","Microsoft Teams","Slack","Notion"],              audience:"Product, sales, leadership teams",             sla:24,  refund:"14 days", cancel:"Transcripts 90d post-cancel" },
+  { id:"pixeldeck",    name:"PixelDeck",    tagline:"Slides built in markdown, exported as pixels.", features:["Markdown + live preview","20 themes","PDF/PPTX/URL export","Speaker notes","Diagram blocks"],      pricing:{starter:0,pro:9,team:7},   integrations:["GitHub","Google Drive","Notion"],                                    audience:"Engineers, educators, technical founders",     sla:48,  refund:"14 days", cancel:"Anytime" },
+  { id:"inboxclean",   name:"InboxClean",   tagline:"Triage your inbox in three minutes.",       features:["Now/Later/Maybe triage","One-tap unsubscribe","Sender scoring","Promotions auto-filing","Snooze resurface"], pricing:{starter:5,pro:12,team:10}, integrations:["Gmail","Outlook","ReceiptVault"],                                  audience:"Executives, founders, consultants",            sla:24,  refund:"14 days", cancel:"Messages untouched after cancel" },
+  { id:"teampulse",    name:"TeamPulse",    tagline:"Lightweight pulse surveys for real teams.", features:["Weekly/biweekly/monthly","Anonymous default","5-person floor","eNPS & custom themes","Slack/Teams delivery"], pricing:{starter:0,pro:4,team:3},  integrations:["Slack","Microsoft Teams","BambooHR","Workday export"],              audience:"People ops and engineering managers",          sla:24,  refund:"14 days", cancel:"CSV export" },
+  { id:"linkvault",    name:"LinkVault",    tagline:"Shared bookmarks that don't go stale.",     features:["Browser extension + Slack","Auto-tagging","Weekly dead-link sweep","Per-collection sharing","Read-later queue"], pricing:{starter:0,pro:5,team:4}, integrations:["Slack","Chrome","Firefox","Safari"],                               audience:"Research, design, engineering teams",          sla:48,  refund:"14 days", cancel:"Anytime" },
+  { id:"billsplit",    name:"BillSplit",    tagline:"Stripe-style billing in a weekend.",         features:["Hosted checkout+portal","Dunning & retry","Per-country tax","Stripe/Razorpay backends","Webhook stream"],  pricing:{starter:29,pro:79,team:199}, integrations:["Stripe","Razorpay","QuickBooks","Webhooks"],                        audience:"Indie SaaS founders, small SaaS companies",   sla:12,  refund:"14 days", cancel:"ZIP export" },
+  { id:"audittrail",   name:"AuditTrail",   tagline:"Compliance logging without the consulting bill.", features:["Append-only event log","SOC2/ISO27001 evidence","Per-user timeline","Configurable retention","Node/Python/Go SDKs"], pricing:{starter:49,pro:149,team:399}, integrations:["AWS CloudTrail","Datadog","Splunk","Webhooks"], audience:"Engineering & security teams, regulated industries", sla:8, refund:"14 days", cancel:"Logs readable 30d post-cancel" },
+];
+
+// LumenX-to-LumenX integration edges
+const INTRA_LINKS = [
+  { source:"timemark",   target:"invoiceflow", label:"Billing handoff",    color:"#fbbf24" },
+  { source:"timemark",   target:"taskgrid",    label:"Task sync",          color:"#fbbf24" },
+  { source:"kanbanlite", target:"taskgrid",    label:"Board sync",         color:"#fbbf24" },
+  { source:"inboxclean", target:"receiptvault",label:"Receipt auto-filing",color:"#818cf8" },
+];
+
+// Shared external integrations (2+ products)
+const SHARED_HUBS = [
+  { id:"hub_slack",       name:"Slack",          icon:"💬", color:"#8B5CF6", products:["taskgrid","chatrelay","pollwise","meetminutes","teampulse","linkvault"] },
+  { id:"hub_gdrive",      name:"Google Drive",   icon:"📁", color:"#34D399", products:["emailpilot","receiptvault","documerge","pixeldeck","signpath"] },
+  { id:"hub_quickbooks",  name:"QuickBooks",     icon:"💹", color:"#10B981", products:["invoiceflow","receiptvault","billsplit"] },
+  { id:"hub_stripe",      name:"Stripe",         icon:"💳", color:"#6366F1", products:["invoiceflow","billsplit"] },
+  { id:"hub_razorpay",    name:"Razorpay",       icon:"🏦", color:"#06B6D4", products:["invoiceflow","billsplit"] },
+  { id:"hub_hubspot",     name:"HubSpot",        icon:"🔶", color:"#F97316", products:["formcraft","signpath"] },
+  { id:"hub_notion",      name:"Notion",         icon:"📄", color:"#A78BFA", products:["emailpilot","meetminutes","pixeldeck"] },
+  { id:"hub_gcal",        name:"Google Calendar",icon:"📅", color:"#4F8EF7", products:["taskgrid","calendarsync"] },
+  { id:"hub_msteams",     name:"Microsoft Teams",icon:"🟦", color:"#818CF8", products:["calendarsync","pollwise","teampulse","meetminutes"] },
+  { id:"hub_zoom",        name:"Zoom",           icon:"📹", color:"#FB923C", products:["calendarsync","meetminutes"] },
+  { id:"hub_zapier",      name:"Zapier",         icon:"⚡", color:"#F59E0B", products:["formcraft","chatrelay"] },
+  { id:"hub_webhooks",    name:"Webhooks",       icon:"🪝", color:"#6B7280", products:["formcraft","billsplit","audittrail"] },
+];
+
+// Wiki sections per product (8 per product + 7 company)
+const SECTION_KEYS = ["identity","target_audience","pricing","refund","cancellation","features","integrations","support_sla"];
+const COMPANY_SECTIONS = ["about","refund_window","free_trial","annual_discount","startup_program","education_program","bundle_discount"];
+
+// ═══════════════════════════════════════════════════════════════
+// GRAPH ENGINE
+// ═══════════════════════════════════════════════════════════════
+
+const svg = d3.select("#graph");
+let W, H;
+
+const zoomLayer  = svg.append("g").attr("class","zoom-layer");
+const linksLayer = zoomLayer.append("g").attr("class","links-layer");
+const nodesLayer = zoomLayer.append("g").attr("class","nodes-layer");
+
+// Arrow marker
+const defs = svg.append("defs");
+defs.append("filter").attr("id","glow")
+  .call(f => {
+    f.append("feGaussianBlur").attr("stdDeviation","3.5").attr("result","blur");
+    f.append("feMerge").call(m => {
+      m.append("feMergeNode").attr("in","blur");
+      m.append("feMergeNode").attr("in","SourceGraphic");
+    });
+  });
+
+// Zoom behaviour
+const zoom = d3.zoom().scaleExtent([0.15, 4])
+  .on("zoom", e => zoomLayer.attr("transform", e.transform));
+svg.call(zoom);
+
+let simulation, nodeElems, linkElems;
+let currentMode = "products";
+let selectedId = null;
+let activeCategory = null;
+let searchTerm = "";
+
+// ── Particles state ──
+const particles = [];
+let animFrame;
+
+// ═══════════════════════════════════════════════════════════════
+// BUILD GRAPH DATA
+// ═══════════════════════════════════════════════════════════════
+
+function buildGraph(mode) {
+  const nodes = [], links = [];
+
+  // Company hub
+  nodes.push({ id:"lumenx", type:"company", label:"LumenX", r:36 });
+
+  // Product nodes
+  for (const p of PRODUCTS) {
+    nodes.push({
+      id: p.id, type:"product", label:p.name,
+      category: PROD_COLOR[p.id].group, color: PROD_COLOR[p.id].color,
+      data: p, r: 22,
+    });
+    // Company → product link
+    links.push({ source:"lumenx", target:p.id, type:"company" });
+  }
+
+  if (mode === "products") {
+    // Only intra-LumenX links
+    for (const lk of INTRA_LINKS)
+      links.push({ ...lk, type:"intra" });
+  }
+
+  if (mode === "integrations") {
+    // Intra links
+    for (const lk of INTRA_LINKS)
+      links.push({ ...lk, type:"intra" });
+    // Hub nodes + links
+    for (const hub of SHARED_HUBS) {
+      nodes.push({ id:hub.id, type:"hub", label:hub.name, icon:hub.icon, color:hub.color, r:18 });
+      for (const pid of hub.products)
+        links.push({ source:pid, target:hub.id, type:"hub", color:hub.color });
+    }
+  }
+
+  if (mode === "sections") {
+    // Intra links
+    for (const lk of INTRA_LINKS)
+      links.push({ ...lk, type:"intra" });
+    // Section nodes for each product
+    for (const p of PRODUCTS) {
+      for (const sec of SECTION_KEYS) {
+        const sid = `${p.id}__${sec}`;
+        nodes.push({ id:sid, type:"section", label:sec.replace("_"," "), parent:p.id, color:PROD_COLOR[p.id].color, r:9 });
+        links.push({ source:p.id, target:sid, type:"section", color:PROD_COLOR[p.id].color });
+      }
+    }
+    // Company sections
+    for (const sec of COMPANY_SECTIONS) {
+      const sid = `_company__${sec}`;
+      nodes.push({ id:sid, type:"section", label:sec.replace("_"," "), parent:"lumenx", color:"#f5b400", r:9 });
+      links.push({ source:"lumenx", target:sid, type:"section", color:"#f5b400" });
+    }
+  }
+
+  return { nodes, links };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════════════════════════
+
+function render(mode) {
+  W = document.querySelector(".canvas-wrap").clientWidth;
+  H = document.querySelector(".canvas-wrap").clientHeight;
+  svg.attr("viewBox", `0 0 ${W} ${H}`);
+
+  const { nodes, links } = buildGraph(mode);
+
+  // Stats
+  document.getElementById("stat-nodes").textContent = nodes.length;
+  document.getElementById("stat-edges").textContent = links.length;
+
+  // Stop existing simulation
+  if (simulation) simulation.stop();
+
+  // ── Links ──
+  linksLayer.selectAll("*").remove();
+
+  // Regular links
+  linkElems = linksLayer.selectAll("line.link")
+    .data(links.filter(d => d.type !== "intra"))
+    .join("line")
+    .attr("class", d => `link link-${d.type}`)
+    .style("stroke", d => d.color || null)
+    .style("stroke-width", d => d.type === "hub" ? 1 : 0.8)
+    .style("stroke-opacity", 0.5);
+
+  // Intra-LumenX links as paths for animation
+  const intraLinks = links.filter(d => d.type === "intra");
+  const intraPaths = linksLayer.selectAll("path.intra-path")
+    .data(intraLinks)
+    .join("path")
+    .attr("class","intra-path link-intra")
+    .style("fill","none")
+    .style("stroke", d => d.color || "#f5b400")
+    .style("stroke-opacity", 0.8)
+    .style("filter","url(#glow)");
+
+  // Intra labels
+  const intraLabels = linksLayer.selectAll("text.intra-label")
+    .data(intraLinks)
+    .join("text")
+    .attr("class","intra-label")
+    .text(d => d.label)
+    .style("font-size","8.5px")
+    .style("fill","rgba(200,214,239,0.6)")
+    .style("text-anchor","middle")
+    .style("pointer-events","none");
+
+  // ── Nodes ──
+  nodesLayer.selectAll("*").remove();
+
+  const nodeG = nodesLayer.selectAll("g.node")
+    .data(nodes, d => d.id)
+    .join("g")
+    .attr("class", d => `node node-${d.type}`)
+    .attr("data-id", d => d.id)
+    .call(d3.drag()
+      .on("start", dragStart)
+      .on("drag",  dragged)
+      .on("end",   dragEnd))
+    .on("click", onNodeClick)
+    .on("mouseover", onNodeOver)
+    .on("mouseout",  onNodeOut);
+
+  // Company node: pulse rings + main circle
+  nodeG.filter(d => d.type === "company").each(function(d) {
+    const g = d3.select(this);
+    // pulse rings
+    for (let i = 0; i < 3; i++) {
+      g.append("circle")
+        .attr("class","pulse-ring")
+        .attr("r", 38)
+        .style("fill","none")
+        .style("stroke","rgba(245,180,0,0.25)")
+        .style("stroke-width","1.5")
+        .style("animation-delay", `${i * 0.65}s`);
+    }
+    g.append("circle")
+      .attr("r", d.r)
+      .style("fill","url(#companyGrad)")
+      .style("stroke","rgba(245,180,0,0.6)")
+      .style("stroke-width","2");
+    g.append("text").attr("class","node-label large").attr("y", 4).text("LX");
+    g.append("text").attr("class","node-label").attr("y", d.r + 14).text(d.label);
+  });
+
+  // Define gradient for company
+  defs.selectAll("#companyGrad").remove();
+  const cg = defs.append("radialGradient").attr("id","companyGrad");
+  cg.append("stop").attr("offset","0%").attr("stop-color","#fde68a");
+  cg.append("stop").attr("offset","100%").attr("stop-color","#b45309");
+
+  // Product nodes
+  nodeG.filter(d => d.type === "product").each(function(d) {
+    const g = d3.select(this);
+    // outer glow ring
+    g.append("circle").attr("r", d.r + 4)
+      .style("fill","none")
+      .style("stroke", d.color)
+      .style("stroke-width","1")
+      .style("stroke-opacity","0.3");
+    // main circle
+    g.append("circle").attr("r", d.r)
+      .style("fill", hexToRgba(d.color, 0.18))
+      .style("stroke", d.color)
+      .style("stroke-width","1.8");
+    // abbreviation
+    const abbr = d.label.replace(/[aeiou]/gi,"").slice(0,2).toUpperCase();
+    g.append("text").attr("class","node-label").attr("y", 4).text(abbr)
+      .style("font-size","11px").style("font-weight","800").style("fill", d.color);
+    g.append("text").attr("class","node-label").attr("y", d.r + 13).text(d.label)
+      .style("font-size","9.5px");
+  });
+
+  // Hub nodes
+  nodeG.filter(d => d.type === "hub").each(function(d) {
+    const g = d3.select(this);
+    // hexagon
+    const hex = hexPath(d.r);
+    g.append("path").attr("d", hex)
+      .style("fill", hexToRgba(d.color, 0.15))
+      .style("stroke", d.color)
+      .style("stroke-width","1.5");
+    g.append("text").attr("y","4").attr("text-anchor","middle")
+      .style("font-size","13px").text(d.icon).style("pointer-events","none");
+    g.append("text").attr("class","node-label").attr("y", d.r + 13).text(d.label)
+      .style("font-size","8.5px");
+  });
+
+  // Section nodes
+  nodeG.filter(d => d.type === "section").each(function(d) {
+    const g = d3.select(this);
+    g.append("circle").attr("r", d.r)
+      .style("fill", hexToRgba(d.color, 0.25))
+      .style("stroke", d.color)
+      .style("stroke-width","1")
+      .style("stroke-opacity","0.6");
+    g.append("text").attr("class","node-label").attr("y", d.r + 11).text(d.label)
+      .style("font-size","8px");
+  });
+
+  // ── Force simulation ──
+  const linkForce = d3.forceLink(links)
+    .id(d => d.id)
+    .distance(d => {
+      if (d.type === "company") return mode === "sections" ? 200 : 140;
+      if (d.type === "intra")   return 120;
+      if (d.type === "hub")     return 90;
+      if (d.type === "section") return 60;
+      return 120;
+    })
+    .strength(d => {
+      if (d.type === "company") return 0.06;
+      if (d.type === "intra")   return 0.3;
+      if (d.type === "hub")     return 0.25;
+      if (d.type === "section") return 0.6;
+      return 0.1;
+    });
+
+  simulation = d3.forceSimulation(nodes)
+    .force("link", linkForce)
+    .force("charge", d3.forceManyBody().strength(d => {
+      if (d.type === "company") return -600;
+      if (d.type === "product") return -400;
+      if (d.type === "hub")     return -200;
+      return -80;
+    }))
+    .force("center", d3.forceCenter(W / 2, H / 2).strength(0.05))
+    .force("collide", d3.forceCollide().radius(d => d.r + 18).strength(0.6))
+    .alphaDecay(0.025)
+    .on("tick", ticked);
+
+  // ── Particles ──
+  cancelAnimationFrame(animFrame);
+  particles.length = 0;
+  for (const lk of intraLinks) {
+    for (let i = 0; i < 3; i++)
+      particles.push({ link: lk, t: i / 3, speed: 0.004 + Math.random() * 0.003 });
+  }
+
+  const particleElems = linksLayer.selectAll("circle.particle")
+    .data(particles)
+    .join("circle")
+    .attr("class","particle")
+    .attr("r", 3)
+    .style("fill", d => d.link.color || "#f5b400")
+    .style("filter","url(#glow)")
+    .style("opacity", 0.9);
+
+  function animateParticles() {
+    particleElems.each(function(d) {
+      d.t = (d.t + d.speed) % 1;
+      const s = d.link.source, t = d.link.target;
+      if (!s.x) return;
+      const x = s.x + (t.x - s.x) * d.t;
+      const y = s.y + (t.y - s.y) * d.t;
+      d3.select(this).attr("cx", x).attr("cy", y);
+    });
+    animFrame = requestAnimationFrame(animateParticles);
+  }
+  animateParticles();
+
+  function ticked() {
+    // Regular links (use stored selection — no re-bind every tick)
+    linkElems
+      .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+      .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+
+    // Intra paths
+    intraPaths.attr("d", d => {
+      const s = d.source, t = d.target;
+      const mx = (s.x + t.x) / 2, my = (s.y + t.y) / 2 - 30;
+      return `M${s.x},${s.y} Q${mx},${my} ${t.x},${t.y}`;
+    });
+
+    intraLabels
+      .attr("x", d => (d.source.x + d.target.x) / 2)
+      .attr("y", d => (d.source.y + d.target.y) / 2 - 24);
+
+    // Node positions
+    nodeG.attr("transform", d => `translate(${d.x ?? W/2},${d.y ?? H/2})`);
+
+    // Apply search / category dim
+    applyFilters();
+  }
+
+  // Store refs globally
+  window._nodeG = nodeG;
+  window._intraLinks = intraLinks;
+  window._nodes = nodes;
+
+  // Legend
+  buildLegend(mode);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INTERACTIONS
+// ═══════════════════════════════════════════════════════════════
+
+const tooltip = document.getElementById("tooltip");
+
+function onNodeOver(event, d) {
+  if (d.type === "section") return;
+  const tt = tooltip;
+  tt.innerHTML = buildTooltip(d);
+  tt.classList.add("show");
+  positionTooltip(event);
+}
+
+function onNodeOut() {
+  tooltip.classList.remove("show");
+}
+
+function onNodeClick(event, d) {
+  event.stopPropagation();
+  if (d.type === "company") { showCompanyPanel(); return; }
+  if (d.type === "section" || d.type === "hub") return;
+  selectedId = (selectedId === d.id) ? null : d.id;
+  if (selectedId) showProductPanel(d.data);
+  else closePanel();
+  applyFilters();
+}
+
+svg.on("click", () => { selectedId = null; closePanel(); applyFilters(); });
+
+function positionTooltip(event) {
+  const x = event.clientX + 14, y = event.clientY - 10;
+  tooltip.style.left = Math.min(x, window.innerWidth - 240) + "px";
+  tooltip.style.top  = Math.max(y, 8) + "px";
+}
+document.addEventListener("mousemove", e => {
+  if (tooltip.classList.contains("show")) positionTooltip(e);
+});
+
+function buildTooltip(d) {
+  if (d.type === "company") return `<div class="tt-title">LumenX</div><div class="tt-cat">Company Hub</div><div class="tt-line">20 products · Bengaluru, India · Est. 2022</div>`;
+  if (d.type === "hub") return `<div class="tt-title">${d.label}</div><div class="tt-cat">Shared Integration</div><div class="tt-line"><strong>${SHARED_HUBS.find(h=>h.id===d.id)?.products.length}</strong> products connected</div>`;
+  const p = d.data;
+  return `<div class="tt-title">${p.name}</div>
+    <div class="tt-cat">${d.category}</div>
+    <div class="tt-line"><em>${p.tagline}</em></div>
+    <div class="tt-line" style="margin-top:5px"><strong>From:</strong> $${p.pricing.starter}/mo</div>
+    <div class="tt-line"><strong>SLA:</strong> ${p.sla}h</div>
+    <div class="tt-line"><strong>Integrations:</strong> ${p.integrations.length}</div>`;
+}
+
+// ── Drag ──
+function dragStart(event, d) {
+  if (!event.active) simulation.alphaTarget(0.3).restart();
+  d.fx = d.x; d.fy = d.y;
+}
+function dragged(event, d) { d.fx = event.x; d.fy = event.y; }
+function dragEnd(event, d) {
+  if (!event.active) simulation.alphaTarget(0);
+  d.fx = null; d.fy = null;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INFO PANEL
+// ═══════════════════════════════════════════════════════════════
+
+function showProductPanel(p) {
+  const col = PROD_COLOR[p.id].color;
+  const isLumenX = id => PRODUCTS.some(x => x.id === id);
+  const intList = p.integrations.map(i =>
+    `<span class="int-pill ${isLumenX(i.toLowerCase()) ? "lumenx":"external"}">${i}</span>`
+  ).join(" ");
+
+  const intras = INTRA_LINKS.filter(l => l.source === p.id || l.target === p.id);
+  const intraHtml = intras.length ? intras.map(l => {
+    const other = l.source === p.id ? l.target : l.source;
+    const dir = l.source === p.id ? "→" : "←";
+    const otherName = PRODUCTS.find(x => x.id === other)?.name || other;
+    return `<span class="int-pill lumenx">${dir} ${otherName}: ${l.label}</span>`;
+  }).join(" ") : `<span style="color:var(--text-dim);font-size:11px">No direct LumenX connections</span>`;
+
+  const sections = SECTION_KEYS.map(sec => `
+    <div class="wiki-section" data-sec="${sec}">
+      <div class="wiki-section-header" onclick="toggleWikiSection(this)">
+        <span class="wiki-chunk-id">${p.id}__${sec}</span>
+        <span class="wiki-section-arrow">▶</span>
+      </div>
+      <div class="wiki-section-body">${getSectionPreview(p, sec)}</div>
+    </div>
+  `).join("");
+
+  document.getElementById("panel-content").innerHTML = `
+    <div class="panel-badge" style="background:${hexToRgba(col,0.2)};border:1px solid ${hexToRgba(col,0.4)};color:${col}">${PROD_COLOR[p.id].group}</div>
+    <div class="panel-name">${p.name}</div>
+    <div class="panel-tagline">${p.tagline}</div>
+    <div class="panel-desc">${p.audience}</div>
+
+    <div class="panel-section">
+      <h4>Pricing</h4>
+      <div class="pricing-grid">
+        <div class="pricing-tier"><div class="tier-name">Starter</div><div class="tier-price" style="color:${col}">$${p.pricing.starter}</div><div class="tier-note">/month</div></div>
+        <div class="pricing-tier"><div class="tier-name">Pro</div><div class="tier-price" style="color:${col}">$${p.pricing.pro}</div><div class="tier-note">/month</div></div>
+        <div class="pricing-tier"><div class="tier-name">Team</div><div class="tier-price" style="color:${col}">$${p.pricing.team}</div><div class="tier-note">/seat/mo</div></div>
+      </div>
+      <div style="margin-top:6px;font-size:10px;color:var(--text-dim)">20% off with annual billing · Refund: ${p.refund}</div>
+    </div>
+
+    <div class="panel-section">
+      <h4>Features</h4>
+      ${p.features.map(f => `<span class="feat-pill">${f}</span>`).join(" ")}
+    </div>
+
+    <div class="panel-section">
+      <h4>Integrations</h4>
+      ${intList}
+    </div>
+
+    <div class="panel-section">
+      <h4>LumenX Connections</h4>
+      ${intraHtml}
+    </div>
+
+    <div class="panel-section">
+      <h4>Wiki Sections <span style="color:var(--text-dim);font-weight:400">(${SECTION_KEYS.length} chunks)</span></h4>
+      ${sections}
+    </div>
+  `;
+
+  document.getElementById("info-panel").classList.add("open");
+}
+
+function showCompanyPanel() {
+  document.getElementById("panel-content").innerHTML = `
+    <div class="panel-badge" style="background:rgba(245,180,0,0.15);border:1px solid rgba(245,180,0,0.4);color:#f5b400">Company Hub</div>
+    <div class="panel-name">LumenX</div>
+    <div class="panel-tagline">"Small tools, big leverage."</div>
+    <div class="panel-desc">Builds focused micro-software for small and mid-sized teams. Every product does one thing, integrates with the others, and is priced so a single person can adopt it without filing a budget request.</div>
+
+    <div class="panel-section">
+      <h4>Company Policies</h4>
+      <div class="wiki-section"><div class="wiki-section-header" onclick="toggleWikiSection(this)"><span class="wiki-chunk-id">_company__refund_window</span><span class="wiki-section-arrow">▶</span></div><div class="wiki-section-body">Full refund within <strong>14 days</strong> of first purchase for any LumenX product.</div></div>
+      <div class="wiki-section"><div class="wiki-section-header" onclick="toggleWikiSection(this)"><span class="wiki-chunk-id">_company__free_trial</span><span class="wiki-section-arrow">▶</span></div><div class="wiki-section-body"><strong>14-day</strong> free trial on all paid plans. No credit card required.</div></div>
+      <div class="wiki-section"><div class="wiki-section-header" onclick="toggleWikiSection(this)"><span class="wiki-chunk-id">_company__annual_discount</span><span class="wiki-section-arrow">▶</span></div><div class="wiki-section-body"><strong>20% off</strong> the monthly rate when billed annually.</div></div>
+      <div class="wiki-section"><div class="wiki-section-header" onclick="toggleWikiSection(this)"><span class="wiki-chunk-id">_company__startup_program</span><span class="wiki-section-arrow">▶</span></div><div class="wiki-section-body"><strong>Lumenx Liftoff</strong>: 30% discount for 12 months. Eligibility: company under 2 years old with under USD 1M in funding.</div></div>
+      <div class="wiki-section"><div class="wiki-section-header" onclick="toggleWikiSection(this)"><span class="wiki-chunk-id">_company__education_program</span><span class="wiki-section-arrow">▶</span></div><div class="wiki-section-body"><strong>Lumenx Campus</strong>: 50% discount for verified students, teachers, and registered non-profits.</div></div>
+      <div class="wiki-section"><div class="wiki-section-header" onclick="toggleWikiSection(this)"><span class="wiki-chunk-id">_company__bundle_discount</span><span class="wiki-section-arrow">▶</span></div><div class="wiki-section-body"><strong>Lumenx Suite</strong>: 25% off any 5 LumenX products on the Pro plan billed together.</div></div>
+      <div class="wiki-section"><div class="wiki-section-header" onclick="toggleWikiSection(this)"><span class="wiki-chunk-id">_company__about</span><span class="wiki-section-arrow">▶</span></div><div class="wiki-section-body">Founded 2022 · Bengaluru, India · Support: hello@lumenx.app · Mon–Fri 9am–9pm IST · Billing in USD</div></div>
+    </div>
+
+    <div class="panel-section">
+      <h4>Products (${PRODUCTS.length})</h4>
+      ${PRODUCTS.map(p => `<span class="feat-pill" style="color:${PROD_COLOR[p.id].color};border-color:${hexToRgba(PROD_COLOR[p.id].color,0.35)}">${p.name}</span>`).join(" ")}
+    </div>
+
+    <div class="panel-section">
+      <h4>LumenX–LumenX Integrations (${INTRA_LINKS.length})</h4>
+      ${INTRA_LINKS.map(l => {
+        const sName = PRODUCTS.find(x=>x.id===l.source)?.name;
+        const tName = PRODUCTS.find(x=>x.id===l.target)?.name;
+        return `<div style="margin-bottom:4px"><span class="int-pill lumenx">${sName} → ${tName}</span> <span style="font-size:10px;color:var(--text-dim)">${l.label}</span></div>`;
+      }).join("")}
+    </div>
+  `;
+  document.getElementById("info-panel").classList.add("open");
+}
+
+function closePanel() {
+  document.getElementById("info-panel").classList.remove("open");
+  selectedId = null;
+}
+
+document.getElementById("panel-close").addEventListener("click", closePanel);
+
+function getSectionPreview(p, sec) {
+  switch(sec) {
+    case "identity":       return `<strong>${p.name}</strong> — ${p.tagline}<br>${p.audience}`;
+    case "target_audience": return p.audience;
+    case "pricing":        return `Starter $${p.pricing.starter}/mo · Pro $${p.pricing.pro}/mo · Team $${p.pricing.team}/seat/mo<br>Annual billing: 20% off.`;
+    case "refund":         return p.refund;
+    case "cancellation":   return p.cancel;
+    case "features":       return p.features.map(f=>`• ${f}`).join("<br>");
+    case "integrations":   return p.integrations.join(", ");
+    case "support_sla":    return `Response within <strong>${p.sla} hours</strong>.`;
+    default:               return sec;
+  }
+}
+
+function toggleWikiSection(header) {
+  const sec = header.closest(".wiki-section");
+  sec.classList.toggle("open");
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LEGEND & FILTERS
+// ═══════════════════════════════════════════════════════════════
+
+function buildLegend(mode) {
+  const container = document.getElementById("legend-items");
+  container.innerHTML = "";
+  for (const [grp, v] of Object.entries(CATEGORY_GROUPS)) {
+    const row = document.createElement("div");
+    row.className = "legend-row" + (activeCategory && activeCategory !== grp ? " dimmed" : "");
+    row.innerHTML = `<div class="legend-dot" style="background:${v.color}"></div><span class="legend-label">${grp} (${v.ids.length})</span>`;
+    row.addEventListener("click", () => {
+      activeCategory = (activeCategory === grp) ? null : grp;
+      buildLegend(mode);
+      applyFilters();
+    });
+    container.appendChild(row);
+  }
+
+  // Extra legend for integrations mode
+  if (mode !== "products") {
+    const sep = document.createElement("div");
+    sep.style.cssText = "margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:9px;color:var(--text-dim)";
+    sep.textContent = "──  Edge types  ──";
+    container.appendChild(sep);
+
+    [
+      { color:"rgba(79,142,247,0.6)", label:"Company link", dash:"4,3" },
+      { color:"#fbbf24", label:"LumenX integration", dash:"" },
+      { color:"rgba(150,150,200,0.5)", label:"Shared tool", dash:"3,3" },
+    ].forEach(({color,label,dash}) => {
+      const row = document.createElement("div");
+      row.className = "legend-row";
+      row.innerHTML = `<svg width="18" height="8"><line x1="0" y1="4" x2="18" y2="4" stroke="${color}" stroke-width="2" stroke-dasharray="${dash}"/></svg><span class="legend-label">${label}</span>`;
+      container.appendChild(row);
+    });
+  }
+}
+
+function applyFilters() {
+  if (!window._nodeG) return;
+  const search = searchTerm.toLowerCase();
+
+  window._nodeG.each(function(d) {
+    const g = d3.select(this);
+    let dim = false;
+
+    if (d.type === "product") {
+      const catMatch = !activeCategory || PROD_COLOR[d.id].group === activeCategory;
+      const searchMatch = !search || d.label.toLowerCase().includes(search) || d.id.includes(search);
+      dim = !catMatch || !searchMatch;
+      if (selectedId && d.id !== selectedId) {
+        // Check if connected
+        const connected = window._intraLinks?.some(l => {
+          const s = typeof l.source === "object" ? l.source.id : l.source;
+          const t = typeof l.target === "object" ? l.target.id : l.target;
+          return (s === selectedId || t === selectedId) && (s === d.id || t === d.id);
+        });
+        if (!connected) dim = true;
+      }
+    } else if (d.type === "section") {
+      dim = !(!activeCategory || PROD_COLOR[d.parent]?.group === activeCategory);
+    }
+
+    g.style("opacity", dim ? 0.15 : 1);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CONTROLS
+// ═══════════════════════════════════════════════════════════════
+
+document.querySelectorAll(".mode-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".mode-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentMode = btn.dataset.mode;
+    closePanel();
+    activeCategory = null;
+    render(currentMode);
+  });
+});
+
+document.getElementById("search").addEventListener("input", e => {
+  searchTerm = e.target.value;
+  applyFilters();
+});
+
+document.getElementById("search").addEventListener("keydown", e => {
+  if (e.key === "Escape") { e.target.value = ""; searchTerm = ""; applyFilters(); }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════════════════════
+
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function hexPath(r) {
+  const pts = d3.range(6).map(i => {
+    const a = (i * 60 - 30) * Math.PI / 180;
+    return [r * Math.cos(a), r * Math.sin(a)];
+  });
+  return "M" + pts.map(p => p.join(",")).join("L") + "Z";
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
+
+window.toggleWikiSection = toggleWikiSection;
+
+// Auto-fit on resize
+const ro = new ResizeObserver(() => {
+  if (simulation) {
+    W = document.querySelector(".canvas-wrap").clientWidth;
+    H = document.querySelector(".canvas-wrap").clientHeight;
+    svg.attr("viewBox", `0 0 ${W} ${H}`);
+    simulation.force("center", d3.forceCenter(W/2, H/2).strength(0.05));
+    simulation.alpha(0.2).restart();
+  }
+});
+ro.observe(document.querySelector(".canvas-wrap"));
+
+render("products");
+
+// ── Initial zoom-to-fit after simulation settles ──
+setTimeout(() => {
+  const svgEl = document.getElementById("graph");
+  const bbox = zoomLayer.node().getBBox();
+  if (bbox.width > 0) {
+    const pad = 60;
+    const sw = svgEl.clientWidth - pad*2, sh = svgEl.clientHeight - pad*2;
+    const scale = Math.min(sw / bbox.width, sh / bbox.height, 1.2);
+    const tx = pad + (sw - bbox.width * scale) / 2 - bbox.x * scale;
+    const ty = pad + (sh - bbox.height * scale) / 2 - bbox.y * scale;
+    svg.transition().duration(800)
+       .call(zoom.transform, d3.zoomIdentity.translate(tx,ty).scale(scale));
+  }
+}, 2000);
+</script>
+</body>
+</html>

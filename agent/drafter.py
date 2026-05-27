@@ -341,6 +341,7 @@ def draft_reply(ctx: ContextWindow) -> Draft:
 
 
 def _persist_and_return(draft: Draft) -> Draft:
+    # 1. JSON file (legacy / backup — keeps existing scripts working)
     DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
     path = DRAFTS_DIR / f"{draft.draft_id}.json"
     path.write_text(
@@ -348,10 +349,19 @@ def _persist_and_return(draft: Draft) -> Draft:
         encoding="utf-8",
     )
     logger.info(
-        "Draft saved → %s  (thread=%s  label=%s  auto_send=%s)",
+        "Draft saved -> %s  (thread=%s  label=%s  auto_send=%s)",
         path,
         draft.thread_id,
         draft.confidence_label,
         draft.auto_sendable,
     )
+
+    # 2. SQLite feedback log (Phase 5+) — best-effort so a DB error never
+    #    blocks the drafter from returning a result to the caller.
+    try:
+        from agent.feedback_log.writer import record_draft as _record_draft
+        _record_draft(draft)
+    except Exception as exc:  # pragma: no cover
+        logger.warning("feedback_log.record_draft failed (non-fatal): %s", exc)
+
     return draft
