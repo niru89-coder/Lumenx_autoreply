@@ -36,5 +36,20 @@ class Settings:
         os.environ.get("LUMENX_POLL_INTERVAL_SECONDS", "5")
     )
 
+    # ── Phase 8: Auto-send router ─────────────────────────────────────────────
+    # Auto-send is OFF by default.  Enable only after Phase 7 AUC >= 0.75 and
+    # after manually reviewing a batch of auto-sent replies.
+    AUTO_SEND_ENABLED: bool = (
+        os.environ.get("AUTO_SEND_ENABLED", "false").strip().lower() == "true"
+    )
+    # MLP probability threshold to gate auto-send.  Start strict at 0.90.
+    AUTO_SEND_THRESHOLD: float = float(
+        os.environ.get("AUTO_SEND_THRESHOLD", "0.90")
+    )
+    # Intents that must NEVER auto-send regardless of MLP score.
+    AUTO_SEND_BLOCKED_INTENTS: frozenset[str] = frozenset(
+        os.environ.get("AUTO_SEND_BLOCKED_INTENTS", "pricing,cancellation").split(",")
+    )
+
 
 settings = Settings()
