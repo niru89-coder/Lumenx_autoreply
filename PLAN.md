@@ -129,7 +129,7 @@ The Karpathy "context wiki" pattern (from the gist) calls for: **distil raw sour
 
 ---
 
-## Phase 4 — LLM Drafter (≈ 1 day)
+## Phase 4 — LLM Drafter (≈ 1 day) ✅ COMPLETE
 
 **Goal:** Produce a candidate reply. Strict, citation-aware, never inventing pricing or refund detail.
 
@@ -152,6 +152,17 @@ The Karpathy "context wiki" pattern (from the gist) calls for: **distil raw sour
 - *Risk:* Sonnet may sometimes refuse JSON. Mitigation: one retry with a stricter prompt, then escalate to human review.
 
 **Success criteria:** A draft for a refund question cites the wiki refund section. A draft for an unknown product asks for clarification instead of inventing.
+
+**Verified (2026-05-27):**
+- conv-055 (cancellation) → cites `calendarsync__cancellation` + `calendarsync__refund` inline; HIGH confidence; auto_sendable=True.
+- conv-068 (discount, BillSplit) → cites `billsplit__pricing` + `_company__bundle`; uncertainty flag for volume discounts (not in wiki); LOW confidence; auto_sendable=False.
+- conv-001 (integration, Airtable not in wiki) → uncertainty flag fires; auto_sendable=False.
+- conv-048 (greeting) → no wiki, HIGH confidence, auto_sendable=True.
+- Guardrail (sensitive intent + no wiki citations → blocked) is hard-coded in drafter logic.
+- Bug fix: `_build_current_thread_section` now strips trailing assistant turns so coalesced messages always end with a user turn (Anthropic API requirement).
+- Windows terminal: CLI uses UTF-8 stdout reconfigure for model replies containing Unicode arrows/bullets.
+- Drafts persisted to `data/drafts/<uuid>.json` for Phase 5 pickup.
+- Drafter cost per call: ~$0.004–$0.008 (Sonnet 4.6, 1,000–1,700 in tokens + 50–180 out).
 
 ---
 
