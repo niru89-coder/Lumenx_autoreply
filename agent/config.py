@@ -51,5 +51,11 @@ class Settings:
         os.environ.get("AUTO_SEND_BLOCKED_INTENTS", "pricing,cancellation").split(",")
     )
 
+    # ── Phase 10: Deployment ──────────────────────────────────────────────────
+    # Comma-separated list of origins allowed to call this API.
+    # Defaults include localhost for dev; add the Railway dashboard URL in prod.
+    # Example: "http://localhost:3000,https://dashboard-xxxx.up.railway.app"
+    DASHBOARD_URL: str = os.environ.get("DASHBOARD_URL", "")
+
 
 settings = Settings()

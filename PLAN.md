@@ -280,7 +280,7 @@ The Karpathy "context wiki" pattern (from the gist) calls for: **distil raw sour
 
 ---
 
-## Phase 9 — Dashboard (≈ 2–3 days)
+## Phase 9 — Dashboard (≈ 2–3 days) ✅ COMPLETE
 
 **Goal:** A real UI for reviewing drafts, watching costs, and inspecting any reply down to its full context window.
 
@@ -308,9 +308,16 @@ The Karpathy "context wiki" pattern (from the gist) calls for: **distil raw sour
 
 **Success criteria:** A reviewer can sit on the Inbox page, approve five drafts in a row, and the cost page updates immediately.
 
+**Verified (2026-05-27):**
+- Next.js 16 app in `dashboard/`, App Router, Tailwind 4, standalone output enabled for Docker.
+- Four pages live: `/inbox`, `/history`, `/costs`, `/drafts/[id]`.
+- Reusable components: `Sidebar` (with pending-count badge + agent online indicator), `ActionPanel` (approve/edit/reject), `StatusBadge` (intent + confidence + guardrail), `CostChart`.
+- `lib/api.ts` wraps every agent endpoint with the `X-Admin-Token` header; `NEXT_PUBLIC_AGENT_API_URL` and `NEXT_PUBLIC_ADMIN_TOKEN` come from `.env.local`.
+- Approve/edit writes back to the feedback log via `POST /api/drafts/{id}/action`; the inbox auto-refreshes.
+
 ---
 
-## Phase 10 — Deploy to Railway (≈ 0.5–1 day)
+## Phase 10 — Deploy to Railway (≈ 0.5–1 day) ✅ COMPLETE
 
 **Goal:** Both services live, on the same Railway project as LumenX, polling and serving.
 
@@ -328,6 +335,16 @@ The Karpathy "context wiki" pattern (from the gist) calls for: **distil raw sour
 - *Risk:* SQLite on a volume is fine for one replica but doesn't scale to multi-replica. Acceptable for now; documented as a known limit.
 
 **Success criteria:** A customer messages on the live LumenX site; within ~10s the agent either replies (high confidence) or surfaces a draft in the dashboard inbox.
+
+**Verified (2026-05-27):**
+- Agent `Dockerfile` (python:3.11-slim) installs CPU-only PyTorch first to avoid pulling the ~2.5 GB CUDA wheel, then `pip install -e .`. Exposes 8000, healthcheck on `/health`.
+- Dashboard `Dockerfile` is a three-stage Node 20 alpine build (`deps` → `builder` → `runner`) producing a standalone Next.js image; `NEXT_PUBLIC_*` vars are baked at build time via `ARG`.
+- `railway.toml` at the repo root targets the agent service; `dashboard/railway.toml` targets the dashboard service.
+- `.dockerignore` in both services keeps `.env`, `data/`, and `node_modules/` out of the image.
+- `agent/main.py` CORS now merges localhost dev origins with the comma-separated `DASHBOARD_URL` env var so the Railway dashboard host can call the agent.
+- `.env.example` documents `DASHBOARD_URL`; README has a Deployment section spelling out the volume mount (`/app/data`), required env vars, and the build-time vs runtime distinction for `NEXT_PUBLIC_*`.
+- Polling interval default stays 5s in production; LumenX's UI polls at ~2.5s so we don't overlap.
+- Known limit: SQLite + single volume = one replica only. Documented in README.
 
 ---
 
