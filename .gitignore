@@ -1,0 +1,44 @@
+# Secrets — defense in depth
+.env
+.env.*
+!.env.example
+Antrphic_API_Key.txt
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Data and model checkpoints — local-only
+data/*
+!data/.gitkeep
+*.pt
+*.ckpt
+*.onnx
+
+# Next.js / Node (for the future dashboard/)
+node_modules/
+.next/
+out/
+.vercel/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
