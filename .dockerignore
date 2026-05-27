@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Data — mounted as a Railway volume in production
+data/
+
+# Secrets — never bake into the image
+.env
+Antrphic_API_Key.txt
+
+# Dev artifacts
+.pytest_cache/
+*.log
+*.jsonl
+
+# Dashboard — separate service
+dashboard/
+
+# Git
+.git/
+.gitignore
+
+# Docs / scripts not needed at runtime
+docs/
+*.md
+!README.md

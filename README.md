@@ -109,6 +109,40 @@ data/         # local: chroma index, sqlite, model checkpoints (gitignored)
 
 Neither is ever logged, committed, or shown in the dashboard.
 
+## Deployment (Railway)
+
+Two services in the same Railway project, both built from Dockerfiles in this repo.
+
+### Agent service (this directory)
+
+- Builder: `DOCKERFILE` (`Dockerfile`)
+- Healthcheck path: `/health`
+- Required env vars:
+  - `ANTHROPIC_API_KEY`
+  - `LUMENX_ADMIN_TOKEN`
+  - `LUMENX_BASE_URL` (default: `https://lumenx-demo.up.railway.app`)
+  - `DASHBOARD_URL` — public dashboard URL, added to the CORS allowlist
+  - `AUTO_SEND_ENABLED` (default `false`)
+  - `AUTO_SEND_THRESHOLD` (default `0.90`)
+  - `AUTO_SEND_BLOCKED_INTENTS` (default `pricing,cancellation`)
+- Persistent Volume: mount at `/app/data` so SQLite (`feedback.db`), the Chroma index, model checkpoints, and `poller_state.json` survive redeploys.
+
+### Dashboard service (`dashboard/`)
+
+- Builder: `DOCKERFILE` (`dashboard/Dockerfile`, multi-stage standalone build)
+- Healthcheck path: `/`
+- Build-time env vars (must be set as Railway build vars, not just runtime — they're baked into the JS bundle):
+  - `NEXT_PUBLIC_AGENT_API_URL` — public URL of the agent service
+  - `NEXT_PUBLIC_ADMIN_TOKEN` — same value as the agent's `LUMENX_ADMIN_TOKEN`
+
+### Polling cadence
+
+Production poll interval is 5s (configurable via `LUMENX_POLL_INTERVAL_SECONDS`). LumenX's own UI polls at ~2.5s, so we stay below it.
+
+### Known limit
+
+SQLite on a single mounted volume is fine for one replica. Multi-replica scaling would require moving the feedback store to Postgres.
+
 ## Working on this project with Claude Code
 
 This repo ships with project-scoped skills under `.claude/skills/` that future Claude Code sessions will pick up automatically:
