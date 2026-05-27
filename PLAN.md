@@ -166,7 +166,7 @@ The Karpathy "context wiki" pattern (from the gist) calls for: **distil raw sour
 
 ---
 
-## Phase 5 — Feedback Log + Persistence (≈ 1 day)
+## Phase 5 — Feedback Log + Persistence (≈ 1 day) ✅ COMPLETE
 
 **Goal:** Every draft and every human action lands in a queryable store so we can (a) drive the dashboard, (b) feed retrieval, (c) build training labels.
 
@@ -185,6 +185,21 @@ The Karpathy "context wiki" pattern (from the gist) calls for: **distil raw sour
 - *Risk:* PII in stored conversations. Mitigation: stored only on our server, never shipped externally, dashboard requires admin token.
 
 **Success criteria:** Generating a draft creates a `drafts` row. Approving via API creates a `human_actions` row. Restarting the agent does not lose state.
+
+**Verified (2026-05-27):**
+- `data/feedback.db` (SQLite) created on first import; persists across restarts.
+- `drafter.py` auto-records every draft to SQLite (best-effort, non-fatal). Existing JSON files preserved as backup.
+- `scripts/migrate_drafts.py` successfully imported all 7 Phase 4 draft JSON files.
+- API server: `uvicorn agent.main:app --port 8000`
+- Tested endpoints:
+  - `GET /health` → `{"status":"ok","drafts":8,"pending_review":6}`
+  - `GET /api/drafts` → paginated list with intent/label/auto_sendable filters
+  - `GET /api/drafts/pending` → 5 drafts awaiting review
+  - `POST /api/drafts/{id}/action` → recorded "approved" (edit_distance=null) and "edited" (edit_distance=160) actions
+  - `GET /api/drafts/{id}` → full record with human_actions and confidence_predictions
+  - `GET /api/stats` → breakdowns by action, label, intent; cost totals
+- New draft (conv-016 billing, annual discount question) auto-recorded to SQLite immediately upon generation.
+- Swagger docs available at http://localhost:8000/docs
 
 ---
 
