@@ -1,0 +1,13 @@
+# Never bake these into the image
+.env
+.env.local
+.env*.local
+
+# Build output (the multi-stage builder recreates it)
+.next/
+
+# Not needed in the image
+node_modules/
+README.md
+*.md
+.git/
