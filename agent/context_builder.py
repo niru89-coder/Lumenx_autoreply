@@ -339,6 +339,13 @@ def _build_current_thread_section(
     while coalesced and coalesced[0]["role"] != "user":
         coalesced.pop(0)
 
+    # The Anthropic Messages API requires the conversation to end with a user
+    # (customer) turn. Drop trailing assistant turns so the drafter is always
+    # responding to the last customer message, not trying to continue an
+    # already-completed exchange.
+    while coalesced and coalesced[-1]["role"] != "user":
+        coalesced.pop()
+
     # Token budget. Keep most recent turns; drop oldest until we fit.
     def total_tokens(msgs: list[dict[str, str]]) -> int:
         return sum(_est_tokens(m["content"]) for m in msgs)
