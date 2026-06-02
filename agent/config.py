@@ -10,7 +10,14 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-load_dotenv(REPO_ROOT / ".env")
+
+# Load .env only when it exists (local development).  In production (Railway)
+# the variables are already injected into os.environ, so we skip the file and
+# use override=False to ensure Railway's values are never overwritten by a
+# stale local .env that somehow ends up in the image.
+_dotenv_path = REPO_ROOT / ".env"
+if _dotenv_path.exists():
+    load_dotenv(_dotenv_path, override=False)
 
 
 def _required(name: str) -> str:
@@ -18,7 +25,8 @@ def _required(name: str) -> str:
     if not val:
         raise RuntimeError(
             f"Required env var {name!r} is not set. "
-            f"Copy .env.example to .env and fill it in."
+            f"Set it in Railway service variables (production) or copy "
+            f".env.example to .env and fill it in (local development)."
         )
     return val
 
