@@ -74,45 +74,66 @@ def _poller_error_rate() -> tuple[float | None, dict]:
     return rate, poller
 
 
-def main() -> int:
+def run_checks() -> dict:
+    """Run cost + error-rate checks, alerting if any threshold trips.
+
+    Returns a structured summary dict. Threshold breaches are not errors —
+    they're reported in the result and delivered via the notifier. Safe to
+    call in-process from the /api/admin/run-alerts endpoint.
+    """
     alerts: list[str] = []
 
-    try:
-        cost_today = _cost_today()
-        logger.info(
-            "Cost today: $%.4f  (threshold $%.2f)",
-            cost_today, settings.COST_ALERT_USD_PER_DAY,
+    cost_today = _cost_today()
+    logger.info(
+        "Cost today: $%.4f  (threshold $%.2f)",
+        cost_today, settings.COST_ALERT_USD_PER_DAY,
+    )
+    if cost_today > settings.COST_ALERT_USD_PER_DAY:
+        alerts.append(
+            f"💸 Daily cost ${cost_today:.4f} exceeds "
+            f"threshold ${settings.COST_ALERT_USD_PER_DAY:.2f}"
         )
-        if cost_today > settings.COST_ALERT_USD_PER_DAY:
+
+    rate, poller = _poller_error_rate()
+    if rate is None:
+        alerts.append("⚠️ Agent /health unreachable — poller may be down")
+    else:
+        logger.info(
+            "Poller error rate: %.2f%%  (threshold %.2f%%)",
+            rate * 100, settings.ERROR_RATE_ALERT_THRESHOLD * 100,
+        )
+        if rate > settings.ERROR_RATE_ALERT_THRESHOLD:
             alerts.append(
-                f"💸 Daily cost ${cost_today:.4f} exceeds "
-                f"threshold ${settings.COST_ALERT_USD_PER_DAY:.2f}"
+                f"🚨 Poller error rate {rate * 100:.1f}% exceeds "
+                f"threshold {settings.ERROR_RATE_ALERT_THRESHOLD * 100:.1f}% "
+                f"({poller.get('errors')} errors / "
+                f"{poller.get('threads_processed')} processed)"
             )
 
-        rate, poller = _poller_error_rate()
-        if rate is None:
-            alerts.append("⚠️ Agent /health unreachable — poller may be down")
-        else:
-            logger.info(
-                "Poller error rate: %.2f%%  (threshold %.2f%%)",
-                rate * 100, settings.ERROR_RATE_ALERT_THRESHOLD * 100,
-            )
-            if rate > settings.ERROR_RATE_ALERT_THRESHOLD:
-                alerts.append(
-                    f"🚨 Poller error rate {rate * 100:.1f}% exceeds "
-                    f"threshold {settings.ERROR_RATE_ALERT_THRESHOLD * 100:.1f}% "
-                    f"({poller.get('errors')} errors / "
-                    f"{poller.get('threads_processed')} processed)"
-                )
+    sent: list[str] = []
+    if alerts:
+        body = "\n".join(alerts)
+        sent = notify("🔔 LumenX agent alert", body)
+        logger.warning("Alert sent via %s:\n%s", ", ".join(sent), body)
+    else:
+        logger.info("All checks within thresholds — no alert sent")
 
-        if alerts:
-            body = "\n".join(alerts)
-            sent = notify("🔔 LumenX agent alert", body)
-            logger.warning("Alert sent via %s:\n%s", ", ".join(sent), body)
-        else:
-            logger.info("All checks within thresholds — no alert sent")
+    return {
+        "cost_today": round(cost_today, 6),
+        "cost_threshold": settings.COST_ALERT_USD_PER_DAY,
+        "error_rate": rate,
+        "error_rate_threshold": settings.ERROR_RATE_ALERT_THRESHOLD,
+        "poller": poller,
+        "alerts": alerts,
+        "alerted": bool(alerts),
+        "delivered_via": sent,
+    }
+
+
+def main() -> int:
+    try:
+        run_checks()
         return 0
-
     except Exception as exc:  # noqa: BLE001
         logger.exception("monitor_alerts failed: %s", exc)
         return 1

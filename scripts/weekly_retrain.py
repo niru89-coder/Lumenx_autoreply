@@ -47,7 +47,13 @@ def _append_log(entry: dict) -> None:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-def main() -> int:
+def run_retrain() -> dict:
+    """Train a candidate checkpoint; return the structured retrain-log entry.
+
+    Never promotes, and never raises — any failure is captured in the returned
+    entry (``status="error"``) and appended to the retrain log. Safe to call
+    in-process from the /api/admin/retrain endpoint as well as the CLI.
+    """
     started = datetime.now(timezone.utc).isoformat(timespec="seconds")
     active_before = registry.get_active_version()
     latest_before = registry.latest_version()
@@ -84,15 +90,11 @@ def main() -> int:
             "Saved candidate v%d  val_auc=%s  (active still v%s — promote via dashboard)",
             new_version, meta.get("val_auc"), active_before,
         )
-        _append_log(entry)
-        return 0
 
     except SystemExit as exc:
         # train() calls sys.exit(1) when dataset is below min_samples.
         entry.update({"status": "skipped_too_few_samples", "exit_code": int(exc.code or 0)})
         logger.warning("Retrain skipped — not enough labelled data yet")
-        _append_log(entry)
-        return 0  # not a failure — just nothing to learn from
 
     except Exception as exc:
         entry.update({
@@ -101,8 +103,14 @@ def main() -> int:
             "traceback": traceback.format_exc(limit=10),
         })
         logger.exception("Weekly retrain failed: %s", exc)
-        _append_log(entry)
-        return 1
+
+    _append_log(entry)
+    return entry
+
+
+def main() -> int:
+    entry = run_retrain()
+    return 1 if entry.get("status") == "error" else 0
 
 
 if __name__ == "__main__":
