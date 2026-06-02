@@ -258,8 +258,10 @@ async def on_startup() -> None:
 # ── Routers ───────────────────────────────────────────────────────────────────
 
 from agent.api.feedback import router as feedback_router  # noqa: E402
+from agent.api.models import router as models_router  # noqa: E402
 
 app.include_router(feedback_router)
+app.include_router(models_router)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────

@@ -157,17 +157,14 @@ class ConfidenceScorer:
                 )
             return version, path
 
-        # Find latest
-        versions = [
-            int(p.name.replace("confidence_v", ""))
-            for p in MODELS_DIR.glob("confidence_v*")
-            if p.is_dir() and p.name.replace("confidence_v", "").isdigit()
-            and (p / "model.pt").exists()
-        ]
-        if not versions:
+        # Phase 11: serve the version pinned by active.json; if no active
+        # is set yet, fall back to the latest checkpoint on disk.
+        from agent.confidence_net.registry import resolve_serving_version
+
+        v = resolve_serving_version()
+        if v is None:
             raise FileNotFoundError(
                 "No Confidence Net checkpoint found. "
                 "Run: python -m agent.confidence_net.train"
             )
-        v = max(versions)
         return v, MODELS_DIR / f"confidence_v{v}" / "model.pt"

@@ -57,6 +57,36 @@ export interface FeedbackStats {
   total_output_tokens: number;
 }
 
+export interface Checkpoint {
+  version: number;
+  val_auc: number | null;
+  val_bce: number | null;
+  n_train: number | null;
+  n_val: number | null;
+  n_pos_train: number | null;
+  n_pos_val: number | null;
+  n_epochs: number | null;
+  temperature: number | null;
+  feature_version: number | null;
+  train_seed: number | null;
+  is_active: boolean;
+  created_at: string | null;
+  path: string;
+}
+
+export interface ActiveRecord {
+  active_version: number;
+  previous_version: number | null;
+  promoted_at: string;
+  promoted_by: string;
+}
+
+export interface ModelsResponse {
+  active_version: number | null;
+  active_record: ActiveRecord | null;
+  checkpoints: Checkpoint[];
+}
+
 export interface HealthStatus {
   status: string;
   version: string;

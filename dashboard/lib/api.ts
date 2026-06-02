@@ -1,4 +1,4 @@
-import type { Draft, FeedbackStats, HealthStatus } from "./types";
+import type { Draft, FeedbackStats, HealthStatus, ModelsResponse } from "./types";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_AGENT_API_URL ?? "http://localhost:8000";
@@ -55,4 +55,21 @@ export const api = {
 
   /** Agent health + poller status */
   health: () => req<HealthStatus>("/health"),
+
+  /** Confidence Net checkpoints + which is active (Phase 11) */
+  listModels: () => req<ModelsResponse>("/api/models"),
+
+  /** Promote a candidate checkpoint to active; hot-reloads the router scorer */
+  promoteModel: (version: number, reviewer = "dashboard") =>
+    req<{ promoted: ActiveRecordLike; loaded: unknown }>(
+      `/api/models/${version}/promote?reviewer=${encodeURIComponent(reviewer)}`,
+      { method: "POST" }
+    ),
+};
+
+type ActiveRecordLike = {
+  active_version: number;
+  previous_version: number | null;
+  promoted_at: string;
+  promoted_by: string;
 };

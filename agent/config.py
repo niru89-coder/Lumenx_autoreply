@@ -57,5 +57,27 @@ class Settings:
     # Example: "http://localhost:3000,https://dashboard-xxxx.up.railway.app"
     DASHBOARD_URL: str = os.environ.get("DASHBOARD_URL", "")
 
+    # ── Phase 11: Monitoring, alerts & weekly summary ─────────────────────────
+    # Slack incoming-webhook URL.  If unset, notifications fall back to stdout
+    # logging so the weekly cron still produces a visible record in Railway logs.
+    SLACK_WEBHOOK_URL: str = os.environ.get("SLACK_WEBHOOK_URL", "")
+    # Optional SMTP fallback for the weekly cost summary / alerts.
+    SMTP_HOST: str = os.environ.get("SMTP_HOST", "")
+    SMTP_PORT: int = int(os.environ.get("SMTP_PORT", "587"))
+    SMTP_USER: str = os.environ.get("SMTP_USER", "")
+    SMTP_PASSWORD: str = os.environ.get("SMTP_PASSWORD", "")
+    ALERT_EMAIL_TO: str = os.environ.get("ALERT_EMAIL_TO", "")
+    # Alert thresholds (Phase 11 task 3).
+    COST_ALERT_USD_PER_DAY: float = float(
+        os.environ.get("COST_ALERT_USD_PER_DAY", "5.0")
+    )
+    ERROR_RATE_ALERT_THRESHOLD: float = float(
+        os.environ.get("ERROR_RATE_ALERT_THRESHOLD", "0.01")
+    )
+    # Where the monitor script reaches the running agent to read poller stats.
+    AGENT_HEALTH_URL: str = os.environ.get(
+        "AGENT_HEALTH_URL", "http://localhost:8000/health"
+    )
+
 
 settings = Settings()
