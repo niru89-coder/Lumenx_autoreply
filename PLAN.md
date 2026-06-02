@@ -348,7 +348,7 @@ The Karpathy "context wiki" pattern (from the gist) calls for: **distil raw sour
 
 ---
 
-## Phase 11 — Monitoring & weekly retrain (ongoing)
+## Phase 11 — Monitoring & weekly retrain (ongoing) ✅ COMPLETE
 
 **Goal:** The system improves week-over-week without manual intervention beyond reviewing drafts.
 
@@ -359,6 +359,18 @@ The Karpathy "context wiki" pattern (from the gist) calls for: **distil raw sour
 4. A "promote checkpoint?" gate: a new model is staged but doesn't go live until the dashboard shows its val metrics and the user clicks promote.
 
 **Success criteria:** Six weeks after launch, auto-send rate has moved (in either direction — both directions are signal) and the dashboard shows the trend.
+
+**Verified (2026-06-02):**
+- **Model registry** (`agent/confidence_net/registry.py`): `active.json` pins the serving version; `resolve_serving_version()` falls back to latest when no pin is set, preserving the Phase 7/8 behaviour. `scorer.py` now loads the pinned version.
+- **Promote gate** (task 4): `GET /api/models`, `GET /api/models/active`, `POST /api/models/{v}/promote` (`agent/api/models.py`, registered in `main.py`). Promote writes `active.json` and hot-reloads the router scorer in-process. The dashboard **Models** page (`dashboard/app/models/page.tsx`) lists every checkpoint with val AUC/BCE, train/val counts, temperature and feature version, and a Promote button gated behind a confirm dialog.
+- **Weekly retrain** (task 1): `scripts/weekly_retrain.py` trains a candidate from all current labels, appends to `data/retrain_log.jsonl`, and **never auto-promotes** — exit 0 on save/skip-too-few, exit 1 on failure so the scheduler sees it.
+- **Cost summary** (task 2): `agent/notifier.py` (Slack webhook → SMTP → stdout fallback, never raises) + `scripts/cost_summary.py --notify --days 7` with a per-day breakdown.
+- **Alerts** (task 3): `scripts/monitor_alerts.py` fires when today's spend > `COST_ALERT_USD_PER_DAY` (default $5) or poller error rate > `ERROR_RATE_ALERT_THRESHOLD` (default 1%, read from `/health`); an unreachable agent also alerts.
+- Config + `.env.example` document `SLACK_WEBHOOK_URL`, `SMTP_*`, `ALERT_EMAIL_TO`, `COST_ALERT_USD_PER_DAY`, `ERROR_RATE_ALERT_THRESHOLD`, `AGENT_HEALTH_URL`. Verified: modules import + run; `monitor_alerts` degrades gracefully when the agent is offline (exit 0); dashboard `tsc --noEmit` passes.
+- **Operator step (configured outside the repo):** the three Railway cron services are scheduled in the Railway dashboard, sharing the agent's `/app/data` volume and env vars —
+  - `0 4 * * 1  python -m scripts.weekly_retrain`     (retrain, Mon 04:00 UTC)
+  - `0 8 * * 1  python -m scripts.cost_summary --notify --days 7`  (summary, Mon 08:00 UTC)
+  - `0 * * * *  python -m scripts.monitor_alerts`     (alerts, hourly)
 
 ---
 
