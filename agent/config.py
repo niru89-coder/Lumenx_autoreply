@@ -78,6 +78,11 @@ class Settings:
     AGENT_HEALTH_URL: str = os.environ.get(
         "AGENT_HEALTH_URL", "http://localhost:8000/health"
     )
+    # In-process scheduler (APScheduler): runs alerts hourly + retrain/cost
+    # summary weekly. Disable for local dev or if using external cron instead.
+    SCHEDULER_ENABLED: bool = (
+        os.environ.get("SCHEDULER_ENABLED", "true").strip().lower() == "true"
+    )
 
 
 settings = Settings()

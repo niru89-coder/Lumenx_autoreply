@@ -253,6 +253,18 @@ async def on_startup() -> None:
     # Start background poller
     asyncio.create_task(_poll_loop())
     logger.info("Background poller scheduled")
+    # Start in-process scheduler (Phase 11: retrain / cost-summary / alerts)
+    if settings.SCHEDULER_ENABLED:
+        from agent.scheduler import start_scheduler
+        start_scheduler()
+    else:
+        logger.info("In-process scheduler disabled (SCHEDULER_ENABLED=false)")
+
+
+@app.on_event("shutdown")
+async def on_shutdown() -> None:
+    from agent.scheduler import shutdown_scheduler
+    shutdown_scheduler()
 
 
 # ── Routers ───────────────────────────────────────────────────────────────────

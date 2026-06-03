@@ -27,6 +27,8 @@ dependencies = [
     # Phase 7 — confidence net
     "torch>=2.2",
     "numpy>=1.26",
+    # Phase 11 — in-process scheduler for retrain / cost-summary / alerts
+    "apscheduler>=3.10,<4.0",
     # Dev
     "pytest>=8.0",
 ]
