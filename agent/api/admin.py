@@ -79,3 +79,26 @@ async def trigger_alerts() -> dict:
 
     result = await asyncio.to_thread(run_checks)
     return {"ok": True, **result}
+
+
+@router.post("/build-wiki", dependencies=[AdminAuth])
+async def trigger_build_wiki() -> dict:
+    """(Re)build the LLM Wiki on the volume: pull LumenX export -> distil
+    markdown -> embed into Chroma. Needed once on a fresh deploy, since the
+    wiki/Chroma index isn't baked into the image — it lives on the data volume.
+    Local embeddings (no Anthropic cost). Idempotent: resets then re-indexes.
+    """
+    def _build() -> dict:
+        from agent.llm_wiki.builder import build_wiki
+        from agent.llm_wiki.retriever import WikiRetriever
+        from scripts.pull_export import main as pull_export_main
+
+        pull_export_main()                 # cache /api/admin/export + /products
+        chunks = build_wiki()              # distil markdown from cached raw
+        retriever = WikiRetriever()
+        retriever.reset()                  # clear stale collection
+        n = retriever.index(chunks)        # embed + index locally
+        return {"chunks_built": len(chunks), "chunks_indexed": n}
+
+    result = await asyncio.to_thread(_build)
+    return {"ok": True, **result}
