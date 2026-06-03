@@ -37,6 +37,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger("monitor_alerts")
 
+# Don't evaluate the per-thread error rate until at least this many threads
+# have been attempted. Otherwise a few transient poll errors while the agent
+# is idle (0 processed) read as a 100% error rate and fire false alarms.
+MIN_ALERT_VOLUME = 20
+
 
 def _cost_today() -> float:
     log = REPO_ROOT / "data" / "llm_calls.jsonl"
@@ -98,16 +103,23 @@ def run_checks() -> dict:
     if rate is None:
         alerts.append("⚠️ Agent /health unreachable — poller may be down")
     else:
+        processed = poller.get("threads_processed", 0)
+        errors = poller.get("errors", 0)
+        volume = processed + errors
         logger.info(
-            "Poller error rate: %.2f%%  (threshold %.2f%%)",
-            rate * 100, settings.ERROR_RATE_ALERT_THRESHOLD * 100,
+            "Poller error rate: %.2f%%  (threshold %.2f%%, volume=%d)",
+            rate * 100, settings.ERROR_RATE_ALERT_THRESHOLD * 100, volume,
         )
-        if rate > settings.ERROR_RATE_ALERT_THRESHOLD:
+        if rate > settings.ERROR_RATE_ALERT_THRESHOLD and volume >= MIN_ALERT_VOLUME:
             alerts.append(
                 f"🚨 Poller error rate {rate * 100:.1f}% exceeds "
                 f"threshold {settings.ERROR_RATE_ALERT_THRESHOLD * 100:.1f}% "
-                f"({poller.get('errors')} errors / "
-                f"{poller.get('threads_processed')} processed)"
+                f"({errors} errors / {processed} processed)"
+            )
+        elif rate > settings.ERROR_RATE_ALERT_THRESHOLD:
+            logger.info(
+                "Error rate above threshold but volume=%d < %d — not alerting yet",
+                volume, MIN_ALERT_VOLUME,
             )
 
     sent: list[str] = []
