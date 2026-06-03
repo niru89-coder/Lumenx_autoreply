@@ -71,6 +71,18 @@ export default function Sidebar() {
             </Link>
           );
         })}
+
+        {/* Static knowledge-graph page (served from /public; opens in a new tab) */}
+        <a
+          href="/wiki_graph.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-slate-400 hover:text-white hover:bg-slate-700/50"
+        >
+          <span>🕸️</span>
+          <span>Knowledge Graph</span>
+          <span className="ml-auto text-xs" style={{ color: "var(--muted)" }}>↗</span>
+        </a>
       </nav>
 
       {/* Agent status */}
