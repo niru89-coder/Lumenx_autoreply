@@ -105,7 +105,7 @@ data/         # local: chroma index, sqlite, model checkpoints (gitignored)
 ## Secrets
 
 - `ANTHROPIC_API_KEY` — currently in `Antrphic_API_Key.txt` (will move to `.env`, kept out of git).
-- `LUMENX_ADMIN_TOKEN` — `lmx_REDACTED_ROTATED`, in `api_description.txt`. Will move to `.env`.
+- `LUMENX_ADMIN_TOKEN` — the LumenX admin API token. Set it in `.env` only; never commit the value.
 
 Neither is ever logged, committed, or shown in the dashboard.
 

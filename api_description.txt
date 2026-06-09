@@ -14,7 +14,7 @@ https://lumenx-demo.up.railway.app
 3) ADMIN API ENDPOINTS
    Base URL:  https://lumenx-demo.up.railway.app
    Auth:      every /api/admin/* call needs header
-              X-Admin-Token: lmx_REDACTED_ROTATED
+              X-Admin-Token: <LUMENX_ADMIN_TOKEN>   # value lives in .env, never commit it
  
    GET  /api/admin/stats
         Counts: threads, messages, unread, intent distribution.
@@ -53,7 +53,7 @@ https://lumenx-demo.up.railway.app
  
 CURL EXAMPLES
 -------------
-TOKEN=lmx_REDACTED_ROTATED
+TOKEN=$LUMENX_ADMIN_TOKEN   # export from .env; do not hardcode
 BASE=https://lumenx-demo.up.railway.app
  
 # Stats
